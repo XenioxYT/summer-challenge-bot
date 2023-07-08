@@ -27,7 +27,7 @@ async def on_ready():
 @bot.command(name='help', help='Display a list of all commands and what they do.')
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    help_embed.add_field(name="!add_challenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10")
+    help_embed.add_field(name="!add_challenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
     help_embed.add_field(name="!complete [user] [challenge]", value="Mark a challenge as completed for a user. Example: !complete @user \"challenge name\"")
     help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
     help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
@@ -37,18 +37,42 @@ async def help(ctx):
     help_embed.add_field(name="!help", value="Display this message.")
     await ctx.send(embed=help_embed)
 
-@bot.command(name='add_challenge', help='Adds a challenge: !add_challenge challenge points')
-async def add_challenge(ctx, challenge: str, points: int):
+from discord import Embed
+
+@bot.command(name='add_challenge', help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
+async def add_challenge(ctx, *, challenges_and_points: str):
+    try:
+        challenges_and_points = challenges_and_points.rsplit(' ', 1)
+        points = int(challenges_and_points[-1])
+        challenges_str = challenges_and_points[0]
+        challenges = [s.strip().strip('"') for s in challenges_str.split(',')]  # Strip the quotes from the challenge strings
+    except ValueError:
+        await ctx.send('Invalid input format. Please follow the format: "challenge1", "challenge2", "challenge3" points')
+        return
+
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
-    c.execute("SELECT * FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
-    if c.fetchone() is None:
-        c.execute("INSERT INTO challenges (challenge_name, points) VALUES (?, ?)", (challenge, points))
-        await ctx.send(f'Challenge {challenge} for {points} points added.')
-    else:
-        await ctx.send('This challenge already exists.')
+
+    added_challenges = []
+    for challenge in challenges:
+        c.execute("SELECT * FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
+        if c.fetchone() is None:
+            c.execute("INSERT INTO challenges (challenge_name, points) VALUES (?, ?)", (challenge, points))
+            added_challenges.append((challenge, points, 'added'))
+        else:
+            added_challenges.append((challenge, points, 'already exists'))
+
     conn.commit()
     conn.close()
+
+    def formatter(i, data):
+        challenge, points, status = data
+        return f'{i+1}. **{challenge}** for `{points} points` {status}\n'
+
+    paginator = AddChallengePaginator(ctx, added_challenges, "Added challenges", formatter)
+    await paginator.start()
+
+
 
 @bot.command(name='all_challenges', help='Lists all challenges.')
 async def all_challenges(ctx):
@@ -171,6 +195,55 @@ async def leaderboard(ctx):
     if len(results) == 0:
         leaderboard_embed.description = 'The leaderboard is empty.'
     await ctx.send(embed=leaderboard_embed)
+
+class AddChallengePaginator:
+
+    def __init__(self, ctx, data, title, formatter):
+        self.ctx = ctx
+        self.data = data
+        self.current_page = 0
+        self.title = title
+        self.formatter = formatter
+
+    async def start(self):
+        if not self.data:
+            await self.ctx.send('No data to display.')
+            return
+
+        self.message = await self.ctx.send(embed=self.make_embed())
+        await self.message.add_reaction('◀️')
+        await self.message.add_reaction('▶️')
+
+        def check(reaction, user):
+            return user == self.ctx.author and str(reaction.emoji) in ['◀️', '▶️'] and reaction.message.id == self.message.id
+
+        while True:
+            try:
+                reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            except asyncio.TimeoutError:
+                break
+            else:
+                await self.message.remove_reaction(reaction, user)
+                if str(reaction.emoji) == '▶️' and self.current_page < (len(self.data) - 1) // 10:
+                    self.current_page += 1
+                elif str(reaction.emoji) == '◀️' and self.current_page > 0:
+                    self.current_page -= 1
+
+                await self.message.edit(embed=self.make_embed())
+
+    def make_embed(self):
+        embed = discord.Embed(
+            title=self.title,
+            color=discord.Color.blue(),
+            description="",
+        )
+        for i in range(self.current_page * 10, min((self.current_page + 1) * 10, len(self.data))):
+            embed.description += self.formatter(i, self.data[i])
+
+        total_pages = (len(self.data) + 9) // 10
+        embed.set_footer(text=f"Page {self.current_page + 1} of {total_pages}")
+
+        return embed
 
 class ChallengePaginator:
 
