@@ -126,8 +126,8 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
     # Create embed
     embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
     embed.set_thumbnail(url=user.avatar.url)
-    embed.add_field(name="__Total Points__", value=f"{total_points or 0}", inline=True)
-    embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0}", inline=True)
+    embed.add_field(name="__Total Points__", value=f"{total_points or 0} 🏆", inline=True)
+    embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0} 🏁", inline=True)
     
     if completed_challenges:
         # Get the last challenge in the list as the most recent challenge completed
@@ -140,12 +140,12 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
         challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in sorted_challenges])
 
         # Add a field for the challenge list
-        embed.add_field(name="__Challenge List__", value=f"{challenges_list}", inline=False)
+        embed.add_field(name="__Completed Challenge List__", value=f"{challenges_list}", inline=False)
 
         # Add a field for the most recent challenge completed
         embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points)", inline=False)
     else:
-        embed.add_field(name="__Challenge List__", value="No completed challenges", inline=False)
+        embed.add_field(name="__Completed Challenge List__", value="No completed challenges", inline=False)
 
     await ctx.send(embed=embed)
 
