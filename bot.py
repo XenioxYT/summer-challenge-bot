@@ -1,7 +1,12 @@
 import discord
 import sqlite3
 import random
+import os 
+from dotenv import load_dotenv
 from discord.ext import commands
+
+load_dotenv()
+TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.all()
 intents.typing = False
@@ -164,7 +169,7 @@ async def leaderboard(ctx):
     leaderboard_embed = discord.Embed(title="Leaderboard", color=discord.Color.blue())
     for i, (user_id, total_points) in enumerate(results, start=1):
         user = await bot.fetch_user(user_id)
-        leaderboard_embed.add_field(name=f"{i}. {user.name}", value=f"**{total_points or 0} points**\n", inline=False)
+        leaderboard_embed.add_field(name=f"{i}. {user.name}", value=f"{total_points or 0} points", inline=False)
     if len(results) == 0:
         leaderboard_embed.description = 'The leaderboard is empty.'
     await ctx.send(embed=leaderboard_embed)
@@ -189,4 +194,4 @@ async def remaining(ctx, user: discord.User):
     else:
         await ctx.send(f'{user.name} has completed all challenges.')
 
-bot.run('MTEyNzAxNjU0NjEyMDc4MTkxNQ.Gbj2hx.orVv3vpTNn-W1uy4_zSelU8QVqZwjf3pfz0NTQ')
+bot.run(TOKEN) # type: ignore
