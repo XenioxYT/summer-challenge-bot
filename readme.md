@@ -62,6 +62,18 @@ To use the bot commands, type the command name preceded by an exclamation mark i
 
 ```
 !add_challenge "Challenge Name" 50
+
+!user_stats @user
+
+!complete Challenge Name
+
+!progress @user1 @user2
+
+!remaining @user
+
+!search Run
+
+!delete_challenge Challenge 1
 ```
 
 ## Contributing
