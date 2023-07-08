@@ -41,7 +41,7 @@ pip install discord.py
 pip install python-dotenv
 pip install fuzzywuzzy
 pip install python-Levenshtein
-pip install discord-py-slash-command # not really needed, mainly used for testing purposes. If any errors occur without this, be sure to install it.
+pip install discord-py-slash-command      #not really needed, mainly used for testing purposes. If any errors occur without this, be sure to install it.
 ```
 
 3. Create a new bot on the [Discord developer portal](https://discord.com/developers/applications) and get your bot token.
