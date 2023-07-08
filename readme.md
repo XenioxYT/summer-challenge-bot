@@ -24,7 +24,7 @@ The bot provides the following commands:
 
 9. `!search [keyword]`: Search for challenges.
 
-10. `!delete_challenge [challenge]`: Delete a challenge. Make sure to use quotes around the challenge name. Example: `!delete_challenge "challenge name"`.
+10. `!delete_challenge [challenge]`: Delete a challenge. Example: `!delete_challenge [challenge name]`.
 
 11. `!help`: Display the list of commands.
 
