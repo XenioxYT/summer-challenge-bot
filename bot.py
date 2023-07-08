@@ -22,21 +22,23 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():
-    print(f'We have logged in as {bot.user}')
+    print(f'Logged in as {bot.user}')
     bot.intents.members = True
 
 @bot.command(name='help', help='Display a list of all commands and what they do.')
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
     help_embed.add_field(name="!add_challenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
-    help_embed.add_field(name="!complete [challenge]", value="Mark a challenge as completed for a user.")
-    help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
-    help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
-    help_embed.add_field(name="!all_challenges", value="List all challenges. Displays 10 challenges per page.")
-    help_embed.add_field(name="!user_stats [user]", value="Display the completed challenges and points of a user.")
+    help_embed.add_field(name="!all_challenges", value="Lists all challenges.")
+    help_embed.add_field(name="!user_stats [user]", value="Get a user's stats.")
     help_embed.add_field(name="!random_challenge [user]", value="Get a random challenge for a user.")
+    help_embed.add_field(name="!complete challenge name", value="Mark a challenge as completed for a user.")
+    help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
+    help_embed.add_field(name="!progress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
+    help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
     help_embed.add_field(name="!help", value="Display this message.")
     await ctx.send(embed=help_embed)
+
 
 from discord import Embed
 
@@ -128,15 +130,24 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
     embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0}", inline=True)
     
     if completed_challenges:
-        challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in completed_challenges])
+        # Get the last challenge in the list as the most recent challenge completed
+        recent_challenge_name, recent_challenge_points = completed_challenges[-1]
+
+        # Sort the completed challenges by points in descending order
+        sorted_challenges = sorted(completed_challenges, key=lambda x: x[1], reverse=True)
+
+        # Create a list of formatted challenge names and points
+        challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in sorted_challenges])
+
+        # Add a field for the challenge list
         embed.add_field(name="__Challenge List__", value=f"{challenges_list}", inline=False)
+
+        # Add a field for the most recent challenge completed
+        embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points)", inline=False)
     else:
         embed.add_field(name="__Challenge List__", value="No completed challenges", inline=False)
 
     await ctx.send(embed=embed)
-
-
-
 
 @bot.command(name='random_challenge', help='Get a random challenge for a user: !random_challenge user')
 async def random_challenge(ctx, user: discord.User = None): # type: ignore
@@ -177,7 +188,7 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
     conn.close()
 
 
-@bot.command(name='complete', help='Mark a challenge as completed for a user: !complete [user] challenge name')
+@bot.command(name='complete', help='Mark a challenge as completed for a user: !complete challenge name')
 async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
     global total_points  # Declare a global variable to store the total points
     if user is None:
@@ -390,6 +401,99 @@ class ChallengePaginator:
 
         return embed
 
+@bot.command(name='progress', help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
+async def progress(ctx, *users: discord.User):
+    if not users:
+        # If no users are given, use the author of the message
+        users = (ctx.author,)
+    conn = sqlite3.connect('challenges.db')
+    c = conn.cursor()
+
+    # Get the total number of challenges
+    c.execute("SELECT COUNT(*) FROM challenges")
+    total_challenges = c.fetchone()[0]
+
+    # Create an empty list to store the progress data for each user
+    progress_data = []
+
+    # Create an empty dictionary to store the winner data
+    winner_data = {"user": None, "points": 0, "challenges": 0}
+
+    for user in users:
+        # Get the number of completed challenges and total points for each user
+        c.execute("""
+            SELECT COUNT(*), SUM(challenges.points)
+            FROM user_progress
+            INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
+            WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
+        """, (user.id, True))
+        completed_challenges, total_points = c.fetchone()
+
+        # Calculate the percentage of completed challenges
+        percentage = round(completed_challenges / total_challenges * 100, 2)
+
+        # Append a tuple of user name, points, completed challenges, and percentage to the progress data list
+        progress_data.append((user.name, total_points or 0, completed_challenges or 0, percentage))
+
+        # Use a try-except block to handle the TypeError when comparing None with an integer
+        try:
+            # Update the winner data if the current user has more points or completed challenges than the previous winner
+            if total_points > winner_data["points"] or (total_points == winner_data["points"] and completed_challenges > winner_data["challenges"]):
+                winner_data["user"] = user.name
+                winner_data["points"] = total_points
+                winner_data["challenges"] = completed_challenges
+        except TypeError:
+            # If total_points is None, use 0 as the default value for comparison
+            if 0 > winner_data["points"] or (0 == winner_data["points"] and completed_challenges > winner_data["challenges"]):
+                winner_data["user"] = user.name
+                winner_data["points"] = 0
+                winner_data["challenges"] = completed_challenges
+
+    conn.close()
+
+    # Choose a color for the embed based on who is the winner
+    if len(users) == 1:
+        # If only one user is given, use blue as the default color
+        color = discord.Color.blue()
+    elif len(set(progress_data)) == 1:
+        # If all users have the same progress data, use yellow as the color for a tie
+        color = discord.Color.gold()
+    elif winner_data["user"] == ctx.author.name:
+        # If the author of the message is the winner, use green as the color for a win
+        color = discord.Color.green()
+    else:
+        # Otherwise, use red as the color for a loss
+        color = discord.Color.red()
+
+    # Create an embed to show the progress of each user
+    embed = discord.Embed(title="Progress Report", color=color)
+    
+    # Define some symbols and abbreviations for formatting
+    point_symbol = '🏅'
+    challenge_symbol = '🎯'
+    percent_emoji = '📈'
+    percent_symbol = '%'
+    point_abbrev = 'pts'
+    challenge_abbrev = 'challenges'
+
+    for name, points, challenges, percent in progress_data:
+        # Create a field for each user with their name and formatted progress data
+        field_value = f"{point_symbol} {points} {point_abbrev}\n{challenge_symbol} {challenges}/{total_challenges} {challenge_abbrev}\n{percent_emoji} {percent} {percent_symbol}"
+        embed.add_field(name=f"{name}", value=field_value, inline=True)
+
+    if len(users) > 1:
+        # If more than one user is given, add a field to show who is the winner or if there is a tie
+        if len(set(progress_data)) == 1:
+            # If all users have the same progress data, show a tie message
+            embed.add_field(name="Result", value="It's a tie!", inline=False)
+        else:
+            # Otherwise, show the winner's name and progress data
+            winner_value = f"{point_symbol} {winner_data['points']} {point_abbrev}\n{challenge_symbol} {winner_data['challenges']}/{total_challenges} {challenge_abbrev}"
+            embed.add_field(name="Winner", value=f"{winner_data['user']}\n{winner_value}", inline=False)
+
+    await ctx.send(embed=embed)
+
+
 
 
 @bot.command(name='remaining', help='Show the remaining challenges for a user: !remaining [user]')
@@ -416,8 +520,5 @@ async def remaining(ctx, user: discord.User = None): # type: ignore
 
     paginator = ChallengePaginator(ctx, results, f'Remaining challenges for {user.name}', formatter)
     await paginator.start()
-
-
-
 
 bot.run(TOKEN) # type: ignore
