@@ -268,12 +268,28 @@ async def leaderboard(ctx):
     results = c.fetchall()
     conn.close()
     leaderboard_embed = discord.Embed(title="Leaderboard", color=discord.Color.blue())
+
+    # Define a dictionary of emojis and colors for each rank
+    rank_emojis = {1: '👑', 2: '🥈', 3: '🥉'}
+    rank_colors = {1: discord.Color.gold(), 2: discord.Color.light_gray(), 3: discord.Color.dark_orange()}
+
     for i, (user_id, total_points) in enumerate(results, start=1):
         user = await bot.fetch_user(user_id)
-        leaderboard_embed.add_field(name=f"{i}. {user.name}", value=f"{total_points or 0} points", inline=False)
+
+        # Get the emoji and color for the current rank, or use default values if not in the dictionary
+        emoji = rank_emojis.get(i, '⭐')
+        color = rank_colors.get(i, discord.Color.blue())
+
+        # Create a field for each user with their name, points, and emoji
+        leaderboard_embed.add_field(name=f"{emoji} {user.name}", value=f"{total_points or 0} points", inline=False)
+
+        # Change the color of the embed to match the current rank
+        leaderboard_embed.color = color
+
     if len(results) == 0:
         leaderboard_embed.description = 'The leaderboard is empty.'
     await ctx.send(embed=leaderboard_embed)
+
 
 class AddChallengePaginator:
 
