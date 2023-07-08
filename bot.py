@@ -4,6 +4,7 @@ import random
 import os 
 import math
 import asyncio
+import typing
 from dotenv import load_dotenv
 from discord.ext import commands
 
@@ -28,7 +29,7 @@ async def on_ready():
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
     help_embed.add_field(name="!add_challenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
-    help_embed.add_field(name="!complete [user] [challenge]", value="Mark a challenge as completed for a user. Example: !complete @user \"challenge name\"")
+    help_embed.add_field(name="!complete [challenge]", value="Mark a challenge as completed for a user.")
     help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
     help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
     help_embed.add_field(name="!all_challenges", value="List all challenges. Displays 10 challenges per page.")
@@ -67,10 +68,12 @@ async def add_challenge(ctx, *, challenges_and_points: str):
 
     def formatter(i, data):
         challenge, points, status = data
-        return f'{i+1}. **{challenge}** for `{points} points` {status}\n'
+        emoji = '✅' if status == 'added' else '❌'
+        return f'{i+1}. {emoji} **{challenge}** for `{points} points` {status}\n'
 
     paginator = AddChallengePaginator(ctx, added_challenges, "Added challenges", formatter)
     await paginator.start()
+
 
 
 
@@ -82,8 +85,14 @@ async def all_challenges(ctx):
     all_challenges = c.fetchall()
     conn.close()
 
-    paginator = ChallengePaginator(ctx, all_challenges, "All Challenges")
+    def formatter(i, data):
+        challenge, points = data
+        emoji = '🏆' if points >= 100 else '🎖️' if points >= 50 else '🎗️'
+        return f'{i+1}. {emoji} **{challenge}** for `{points} points`\n'
+
+    paginator = ChallengePaginator(ctx, all_challenges, "All Challenges", formatter)
     await paginator.start()
+
 
 @bot.command(name='user_stats', help='Get a user\'s stats: !user_stats [user]')
 async def user_stats(ctx, user: discord.User = None): # type: ignore
@@ -114,6 +123,7 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
 
     # Create embed
     embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
+    embed.set_thumbnail(url=user.avatar.url)
     embed.add_field(name="__Total Points__", value=f"{total_points or 0}", inline=True)
     embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0}", inline=True)
     
@@ -124,6 +134,7 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
         embed.add_field(name="__Challenge List__", value="No completed challenges", inline=False)
 
     await ctx.send(embed=embed)
+
 
 
 
@@ -143,13 +154,32 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
     results = c.fetchall()
     if results:
         random_challenge = random.choice(results)
-        await ctx.send(f'A random challenge for {user.name} is "{random_challenge[0]}" for **{random_challenge[1]} points**.')
+        challenge_name, points = random_challenge
+        remaining_challenges = len(results) - 1
+
+        # Choose a color for the embed based on the points of the challenge
+        if points >= 100:
+            color = discord.Color.red()
+        elif points >= 50:
+            color = discord.Color.gold()
+        else:
+            color = discord.Color.green()
+
+        # Create an embed to display the challenge name and points
+        embed = discord.Embed(title=f"A random challenge for {user.name}", color=color)
+        embed.add_field(name="__Challenge Name__", value=f"**{challenge_name}**", inline=False)
+        embed.add_field(name="__Points__", value=f"`{points}`", inline=False)
+        embed.add_field(name="__Remaining Challenges__", value=f"`{remaining_challenges}`", inline=False)
+
+        await ctx.send(embed=embed)
     else:
         await ctx.send(f'{user.name} has completed all challenges.')
     conn.close()
 
-@bot.command(name='complete', help='Mark a challenge as completed for a user: !complete user "challenge name"')
-async def complete(ctx, user: discord.User, challenge: str):
+
+@bot.command(name='complete', help='Mark a challenge as completed for a user: !complete [user] challenge name')
+async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
+    global total_points  # Declare a global variable to store the total points
     if user is None:
         user = ctx.author
     challenge = challenge.lower()  # Convert to lowercase
@@ -162,17 +192,66 @@ async def complete(ctx, user: discord.User, challenge: str):
         return
     challenge_id, points = result
     c.execute("INSERT OR IGNORE INTO user_progress (user_id, challenge_id, is_completed) VALUES (?, ?, ?)", (user.id, challenge_id, False))
-    c.execute("UPDATE user_progress SET is_completed = ? WHERE user_id = ? AND challenge_id = ?", (True, user.id, challenge_id))
-    c.execute("""
-        SELECT SUM(challenges.points)
-        FROM user_progress
-        INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
-        WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
-    """, (user.id, True))
-    total_points = c.fetchone()[0]
-    conn.commit()
-    conn.close()
-    await ctx.send(f'{user.name} has completed the "{challenge}" challenge and now has **{total_points or 0} points**.')
+    # Add this condition to check if the user has already completed the challenge
+    c.execute("SELECT is_completed FROM user_progress WHERE user_id = ? AND challenge_id = ?", (user.id, challenge_id))
+    is_completed = c.fetchone()[0]
+    if not is_completed:
+        # Only update the table and send the message if the user has not completed the challenge
+        c.execute("UPDATE user_progress SET is_completed = ? WHERE user_id = ? AND challenge_id = ?", (True, user.id, challenge_id))
+        
+        # Get total points
+        c.execute("""
+            SELECT SUM(challenges.points)
+            FROM user_progress
+            INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
+            WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
+        """, (user.id, True))
+        total_points = c.fetchone()[0]  # Assign the value to the global variable
+
+        # Get completed challenges
+        c.execute("""
+            SELECT challenges.challenge_name, challenges.points
+            FROM user_progress
+            INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
+            WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
+        """, (user.id, True))
+        completed_challenges = c.fetchall()
+
+        # Get remaining challenges
+        c.execute("""
+            SELECT challenge_name, points
+            FROM challenges
+            WHERE challenge_id NOT IN (
+                SELECT challenge_id FROM user_progress WHERE user_id = ? AND is_completed = ?
+            )
+        """, (user.id, True))
+        remaining_challenges = c.fetchall()
+
+        conn.commit()
+        conn.close()
+
+        # Add a checkmark reaction to the message to indicate success
+        await ctx.message.add_reaction('✅')
+
+        # Create an embed to show the user's stats after completing the challenge
+        embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
+        embed.set_thumbnail(url=user.avatar.url)
+        embed.add_field(name="__Total Points__", value=f"{total_points or 0}", inline=True)
+        embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0}", inline=True)
+        
+        if completed_challenges:
+            challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in completed_challenges])
+            embed.add_field(name="__Challenge List__", value=f"{challenges_list}", inline=False)
+        else:
+            embed.add_field(name="__Challenge List__", value="No completed challenges", inline=False)
+
+        embed.add_field(name="__Remaining Challenges__", value=f"{len(remaining_challenges) or 0}", inline=True)
+
+        await ctx.send(embed=embed)
+    else:
+        # Send a different message if the user has already completed the challenge
+        await ctx.send(f'{user.name} has already completed the "{challenge}" challenge.')
+
 
 @bot.command(name='leaderboard', help='Show the leaderboard: !leaderboard')
 async def leaderboard(ctx):
@@ -247,11 +326,12 @@ class AddChallengePaginator:
 
 class ChallengePaginator:
 
-    def __init__(self, ctx, challenges, title):
+    def __init__(self, ctx, challenges, title, formatter):
         self.ctx = ctx
         self.challenges = challenges
         self.current_page = 0
         self.title = title
+        self.formatter = formatter
 
     async def start(self):
         if not self.challenges:
@@ -286,13 +366,14 @@ class ChallengePaginator:
             description="",
         )
         for i in range(self.current_page * 10, min((self.current_page + 1) * 10, len(self.challenges))):
-            challenge_name, points = self.challenges[i]
-            embed.description += f'{i+1}. **{challenge_name}** for `{points} points`\n' # type: ignore
+            challenge_data = self.challenges[i]
+            embed.description += self.formatter(i, challenge_data) # type: ignore
 
         total_pages = (len(self.challenges) + 9) // 10
         embed.set_footer(text=f"Page {self.current_page + 1} of {total_pages}")
 
         return embed
+
 
 
 @bot.command(name='remaining', help='Show the remaining challenges for a user: !remaining [user]')
@@ -311,8 +392,15 @@ async def remaining(ctx, user: discord.User = None): # type: ignore
     """, (user.id, True))
     results = c.fetchall()
     conn.close()
-    paginator = ChallengePaginator(ctx, results, f'Remaining challenges for {user.name}')
+
+    def formatter(i, data):
+        challenge, points = data
+        emoji = '🏆' if points >= 100 else '🎖️' if points >= 50 else '🎗️'
+        return f'{i+1}. {emoji} **{challenge}** for `{points} points`\n'
+
+    paginator = ChallengePaginator(ctx, results, f'Remaining challenges for {user.name}', formatter)
     await paginator.start()
+
 
 
 
