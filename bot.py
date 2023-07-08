@@ -7,6 +7,15 @@ import asyncio
 import typing
 from dotenv import load_dotenv
 from discord.ext import commands
+from discord import Embed
+from fuzzywuzzy import process
+
+# here's the list of pip packages you'll need to install
+# pip install discord.py
+# pip install python-dotenv
+# pip install fuzzywuzzy
+# pip install python-Levenshtein
+# pip install discord-py-slash-command
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -36,11 +45,16 @@ async def help(ctx):
     help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
     help_embed.add_field(name="!progress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
     help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
+    help_embed.add_field(name="!search [keyword]", value="Search for challenges.")
+    help_embed.add_field(name="!delete_challenge [challenge]", value="Delete a challenge. Make sure to use quotes around the challenge name. Example: !delete_challenge \"challenge name\"")
     help_embed.add_field(name="!help", value="Display this message.")
     await ctx.send(embed=help_embed)
 
 
-from discord import Embed
+def challenge_formatter(index, challenge_data):
+    challenge_name, points = challenge_data
+    return f'{index + 1}. **{challenge_name}** for `{points} points`\n'
+
 
 @bot.command(name='add_challenge', help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
 async def add_challenge(ctx, *, challenges_and_points: str):
@@ -76,7 +90,47 @@ async def add_challenge(ctx, *, challenges_and_points: str):
     paginator = AddChallengePaginator(ctx, added_challenges, "Added challenges", formatter)
     await paginator.start()
 
+@bot.command(name='delete_challenge', help='Deletes a challenge: !delete_challenge "challenge1"')
+async def delete_challenge(ctx, *, challenge: str):
+    challenge = challenge.strip('"')  # Strip the quotes from the challenge string
+    conn = sqlite3.connect('challenges.db')
+    c = conn.cursor()
+    
+    c.execute("SELECT * FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
+    if c.fetchone() is None:
+        await ctx.send(f'The challenge "{challenge}" does not exist.')
+    else:
+        c.execute("DELETE FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
+        await ctx.send(f'The challenge "{challenge}" has been deleted.')
+        
+    conn.commit()
+    conn.close()
 
+@bot.command(name='search', help='Search for challenges: !search keyword')
+async def search(ctx, *, keyword: str):
+    conn = sqlite3.connect('challenges.db')
+    c = conn.cursor()
+
+    # Get all challenge names
+    c.execute("SELECT challenge_name FROM challenges")
+    all_challenges = [row[0] for row in c.fetchall()]
+
+    # Get the top 5 matches to the keyword
+    top_matches = process.extract(keyword, all_challenges, limit=20)
+
+    # Now get the full data for those top matches
+    results = []
+    for match, score in top_matches:
+        c.execute("SELECT challenge_name, points FROM challenges WHERE challenge_name = ?", (match,))
+        results.append(c.fetchone())
+
+    conn.close()
+
+    if results:
+        paginator = ChallengePaginator(ctx, results, f'Search results for "{keyword}"', challenge_formatter)
+        await paginator.start()
+    else:
+        await ctx.send(f'No challenges found similar to "{keyword}"')
 
 
 @bot.command(name='all_challenges', help='Lists all challenges.')
@@ -95,6 +149,28 @@ async def all_challenges(ctx):
     paginator = ChallengePaginator(ctx, all_challenges, "All Challenges", formatter)
     await paginator.start()
 
+def get_color(completed_points):
+    # Connect to the database
+    conn = sqlite3.connect('challenges.db')
+    c = conn.cursor()
+
+    # Get the total points of all challenges
+    c.execute("SELECT SUM(points) FROM challenges")
+    total_points = c.fetchone()[0]
+
+    # Close the connection
+    conn.close()
+
+    # Calculate the percentage of completed points
+    percentage = completed_points / total_points
+
+    # Return a different color depending on the percentage
+    if percentage >= 0.5: # more than 50% completed
+        return discord.Color.green()
+    elif percentage >= 0.25: # more than 25% completed
+        return discord.Color.gold()
+    else: # less than 25% completed
+        return discord.Color.red()
 
 @bot.command(name='user_stats', help='Get a user\'s stats: !user_stats [user]')
 async def user_stats(ctx, user: discord.User = None): # type: ignore
@@ -121,14 +197,25 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
     """, (user.id, True))
     completed_challenges = c.fetchall()
 
+    # Get completed points
+    c.execute("""
+        SELECT SUM(challenges.points)
+        FROM user_progress
+        INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
+        WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
+    """, (user.id, True))
+    completed_points = c.fetchone()[0]
+
     conn.close()
 
     # Create embed
+    color=get_color(completed_points) # use completed points instead of completed challenges
     embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
     embed.set_thumbnail(url=user.avatar.url)
     embed.add_field(name="__Total Points__", value=f"{total_points or 0} 🏆", inline=True)
     embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0} 🏁", inline=True)
-    
+    embed.color = color
+
     if completed_challenges:
         # Get the last challenge in the list as the most recent challenge completed
         recent_challenge_name, recent_challenge_points = completed_challenges[-1]
@@ -137,15 +224,24 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
         sorted_challenges = sorted(completed_challenges, key=lambda x: x[1], reverse=True)
 
         # Create a list of formatted challenge names and points
-        challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in sorted_challenges])
+        challenges_list = [f"{name} ({points} points)" for name, points in sorted_challenges]
 
-        # Add a field for the challenge list
-        embed.add_field(name="__Completed Challenge List__", value=f"{challenges_list}", inline=False)
+        # Split the challenge list into multiple fields, each with less than 1024 characters
+        field_value = ""
+        for challenge in challenges_list:
+            if len(field_value) + len(challenge) + 1 > 1024: # check if adding the next challenge would exceed the limit
+                embed.add_field(name="__Challenge List__", value=f"{field_value}", inline=False) # add the current field value to the embed
+                field_value = "" # reset the field value
+            field_value += challenge + "\n" # add the next challenge to the field value
+        
+        if field_value: # check if there is any remaining field value
+            embed.add_field(name="__Challenge List__", value=f"{field_value}", inline=False) # add the last field value to the embed
 
         # Add a field for the most recent challenge completed
-        embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points)", inline=False)
+        embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points) 🎉", inline=False)
     else:
-        embed.add_field(name="__Completed Challenge List__", value="No completed challenges", inline=False)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+        embed.add_field(name="__Challenge List__", value="No completed challenges 🙁", inline=False)
 
     await ctx.send(embed=embed)
 
@@ -186,7 +282,6 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
     else:
         await ctx.send(f'{user.name} has completed all challenges.')
     conn.close()
-
 
 @bot.command(name='complete', help='Mark a challenge as completed for a user: !complete challenge name')
 async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
@@ -263,7 +358,6 @@ async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
         # Send a different message if the user has already completed the challenge
         await ctx.send(f'{user.name} has already completed the "{challenge}" challenge.')
 
-
 @bot.command(name='leaderboard', help='Show the leaderboard: !leaderboard')
 async def leaderboard(ctx):
     conn = sqlite3.connect('challenges.db')
@@ -300,7 +394,6 @@ async def leaderboard(ctx):
     if len(results) == 0:
         leaderboard_embed.description = 'The leaderboard is empty.'
     await ctx.send(embed=leaderboard_embed)
-
 
 class AddChallengePaginator:
 
@@ -492,9 +585,6 @@ async def progress(ctx, *users: discord.User):
             embed.add_field(name="Winner", value=f"{winner_data['user']}\n{winner_value}", inline=False)
 
     await ctx.send(embed=embed)
-
-
-
 
 @bot.command(name='remaining', help='Show the remaining challenges for a user: !remaining [user]')
 async def remaining(ctx, user: discord.User = None): # type: ignore
