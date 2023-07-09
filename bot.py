@@ -41,12 +41,12 @@ async def help(ctx):
     help_embed.add_field(name="!all_challenges", value="Lists all challenges.")
     help_embed.add_field(name="!user_stats [user]", value="Get a user's stats.")
     help_embed.add_field(name="!random_challenge [user]", value="Get a random challenge for a user.")
-    help_embed.add_field(name="!complete challenge name", value="Mark a challenge as completed for a user.")
+    help_embed.add_field(name="!complete [challenge]", value="Mark a challenge as completed for a user.")
     help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
     help_embed.add_field(name="!progress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
     help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
     help_embed.add_field(name="!search [keyword]", value="Search for challenges.")
-    help_embed.add_field(name="!delete_challenge [challenge]", value="Delete a challenge. Make sure to use quotes around the challenge name. Example: !delete_challenge \"challenge name\"")
+    help_embed.add_field(name="!delete_challenge [challenge]", value="Delete a challenge. Example: !delete_challenge [challenge name].")
     help_embed.add_field(name="!help", value="Display this message.")
     await ctx.send(embed=help_embed)
 
@@ -116,13 +116,14 @@ async def search(ctx, *, keyword: str):
     all_challenges = [row[0] for row in c.fetchall()]
 
     # Get the top 5 matches to the keyword
-    top_matches = process.extract(keyword, all_challenges, limit=20)
+    matches = process.extract(keyword, all_challenges, limit=20)
 
     # Now get the full data for those top matches
     results = []
-    for match, score in top_matches:
-        c.execute("SELECT challenge_name, points FROM challenges WHERE challenge_name = ?", (match,))
-        results.append(c.fetchone())
+    for match, score in matches:
+        if score >= 70:  # Set a minimum score
+            c.execute("SELECT challenge_name, points FROM challenges WHERE challenge_name = ?", (match,))
+            results.append(c.fetchone())
 
     conn.close()
 
