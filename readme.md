@@ -6,7 +6,7 @@ This bot is designed to manage and track challenges for users in a Discord serve
 
 The bot provides the following commands:
 
-1. `!add_challenge [challenge] [points]`: Adds a new challenge if it doesn't already exist. You can add multiple challenges at once by separating them with commas. Example: `!add_challenge "challenge name" 10`. Another example: `!add_challenge "challenge1", "challenge2", "challenge3" 10`.
+1. `!add_challenge [challenge] [points]`: Adds a new challenge if it doesn't already exist. You can add multiple challenges at once by separating them with commas. Example: `!add_challenge challenge name 10`. Another example: `!add_challenge challenge1, challenge2, challenge3 10`.
 
 2. `!all_challenges`: Lists all challenges in the database.
 
