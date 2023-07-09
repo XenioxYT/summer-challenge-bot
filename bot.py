@@ -37,17 +37,18 @@ async def on_ready():
 @bot.command(name='help', help='Display a list of all commands and what they do.')
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    help_embed.add_field(name="!add_challenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
-    help_embed.add_field(name="!all_challenges", value="Lists all challenges.")
-    help_embed.add_field(name="!user_stats [user]", value="Get a user's stats.")
-    help_embed.add_field(name="!random_challenge [user]", value="Get a random challenge for a user.")
-    help_embed.add_field(name="!complete [challenge]", value="Mark a challenge as completed for a user.")
-    help_embed.add_field(name="!leaderboard", value="Show the leaderboard.")
-    help_embed.add_field(name="!progress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
-    help_embed.add_field(name="!remaining [user]", value="Show the remaining challenges for a user.")
-    help_embed.add_field(name="!search [keyword]", value="Search for challenges.")
-    help_embed.add_field(name="!delete_challenge [challenge]", value="Delete a challenge. Example: !delete_challenge [challenge name].")
+    help_embed.add_field(name="!add_challenge / !newChallenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
+    help_embed.add_field(name="!all_challenges / !showAllChallenges", value="Lists all challenges.")
+    help_embed.add_field(name="!user_stats / !getUserStats [user]", value="Get a user's stats.")
+    help_embed.add_field(name="!random_challenge / !surpriseMe [user]", value="Get a random challenge for a user.")
+    help_embed.add_field(name="!complete / !finishChallenge [challenge]", value="Mark a challenge as completed for a user.")
+    help_embed.add_field(name="!leaderboard / !showRankings", value="Show the leaderboard.")
+    help_embed.add_field(name="!progress / !checkProgress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
+    help_embed.add_field(name="!remaining / !pendingChallenges [user]", value="Show the remaining challenges for a user.")
+    help_embed.add_field(name="!search / !findChallenge [keyword]", value="Search for challenges.")
+    help_embed.add_field(name="!delete_challenge / !removeChallenge / !discardChallenge [challenge]", value="Delete a challenge. Example: !delete_challenge [challenge name].")
     help_embed.add_field(name="!help", value="Display this message.")
+
     await ctx.send(embed=help_embed)
 
 
