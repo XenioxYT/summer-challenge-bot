@@ -314,80 +314,46 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
         await ctx.send(f'{user.name} has completed all challenges.')
     conn.close()
 
-@bot.command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge name')
-async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
-    global total_points  # Declare a global variable to store the total points
+@bot.command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge1, challenge2, challenge3')
+async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenges: str = None):
     if user is None:
         user = ctx.author
-    challenge = challenge.lower()  # Convert to lowercase
+    if challenges is None:
+        await ctx.send('No challenges provided.')
+        return
+    challenge_names = [challenge.strip().lower() for challenge in challenges.split(',')]  # Split challenges by comma and strip whitespace
+
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
-    c.execute("SELECT challenge_id, points FROM challenges WHERE LOWER(challenge_name) = ?", (challenge,))  # Convert to lowercase
-    result = c.fetchone()
-    if result is None:
-        await ctx.send('Challenge not found.')
-        return
-    challenge_id, points = result
-    c.execute("INSERT OR IGNORE INTO user_progress (user_id, challenge_id, is_completed) VALUES (?, ?, ?)", (user.id, challenge_id, False))
-    # Add this condition to check if the user has already completed the challenge
-    c.execute("SELECT is_completed FROM user_progress WHERE user_id = ? AND challenge_id = ?", (user.id, challenge_id))
-    is_completed = c.fetchone()[0]
-    if not is_completed:
-        # Only update the table and send the message if the user has not completed the challenge
+
+    completed_challenges = []
+    for challenge in challenge_names:
+        c.execute("SELECT challenge_id, points FROM challenges WHERE LOWER(challenge_name) = ?", (challenge,))
+        result = c.fetchone()
+        if result is None:
+            completed_challenges.append((challenge, 'not found'))
+            continue
+        challenge_id, points = result
+        c.execute("INSERT OR IGNORE INTO user_progress (user_id, challenge_id, is_completed) VALUES (?, ?, ?)", (user.id, challenge_id, False))
+        c.execute("SELECT is_completed FROM user_progress WHERE user_id = ? AND challenge_id = ?", (user.id, challenge_id))
+        is_completed = c.fetchone()[0]
+        if is_completed:
+            completed_challenges.append((challenge, 'already completed'))
+            continue
         c.execute("UPDATE user_progress SET is_completed = ? WHERE user_id = ? AND challenge_id = ?", (True, user.id, challenge_id))
-        
-        # Get total points
-        c.execute("""
-            SELECT SUM(challenges.points)
-            FROM user_progress
-            INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
-            WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
-        """, (user.id, True))
-        total_points = c.fetchone()[0]  # Assign the value to the global variable
+        completed_challenges.append((challenge, 'completed'))
 
-        # Get completed challenges
-        c.execute("""
-            SELECT challenges.challenge_name, challenges.points
-            FROM user_progress
-            INNER JOIN challenges ON user_progress.challenge_id = challenges.challenge_id
-            WHERE user_progress.user_id = ? AND user_progress.is_completed = ?
-        """, (user.id, True))
-        completed_challenges = c.fetchall()
+    conn.commit()
+    conn.close()
 
-        # Get remaining challenges
-        c.execute("""
-            SELECT challenge_name, points
-            FROM challenges
-            WHERE challenge_id NOT IN (
-                SELECT challenge_id FROM user_progress WHERE user_id = ? AND is_completed = ?
-            )
-        """, (user.id, True))
-        remaining_challenges = c.fetchall()
+    def formatter(i, data):
+        challenge, status = data
+        emoji = '✅' if status == 'completed' else '❌'
+        return f'{i+1}. {emoji} **{challenge}** {status}\n'
 
-        conn.commit()
-        conn.close()
+    paginator = CompleteChallengePaginator(ctx, completed_challenges, "Completed Challenges", formatter)
+    await paginator.start()
 
-        # Add a checkmark reaction to the message to indicate success
-        await ctx.message.add_reaction('✅')
-
-        # Create an embed to show the user's stats after completing the challenge
-        embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
-        embed.set_thumbnail(url=user.avatar.url)
-        embed.add_field(name="__Total Points__", value=f"{total_points or 0}", inline=True)
-        embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0}", inline=True)
-        
-        if completed_challenges:
-            challenges_list = '\n'.join([f"{name} ({points} points)" for name, points in completed_challenges])
-            embed.add_field(name="__Challenge List__", value=f"{challenges_list}", inline=False)
-        else:
-            embed.add_field(name="__Challenge List__", value="No completed challenges", inline=False)
-
-        embed.add_field(name="__Remaining Challenges__", value=f"{len(remaining_challenges) or 0}", inline=True)
-
-        await ctx.send(embed=embed)
-    else:
-        # Send a different message if the user has already completed the challenge
-        await ctx.send(f'{user.name} has already completed the "{challenge}" challenge.')
 
 @bot.command(name='leaderboard', aliases=['showRankings'], help='Show the leaderboard: !leaderboard')
 async def leaderboard(ctx):
@@ -524,6 +490,10 @@ class ChallengePaginator:
         embed.set_footer(text=f"Page {self.current_page + 1} of {total_pages}")
 
         return embed
+
+class CompleteChallengePaginator(AddChallengePaginator):
+    def __init__(self, ctx, data, title, formatter):
+        super().__init__(ctx, data, title, formatter)
 
 @bot.command(name='progress', aliases=['checkProgress'], help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
 async def progress(ctx, *users: discord.User):
