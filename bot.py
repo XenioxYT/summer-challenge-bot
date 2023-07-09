@@ -285,7 +285,7 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
         await ctx.send(f'{user.name} has completed all challenges.')
     conn.close()
 
-@bot.command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
+@bot.command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge name')
 async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
     global total_points  # Declare a global variable to store the total points
     if user is None:
