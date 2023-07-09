@@ -27,7 +27,7 @@ intents.messages = True
 intents.guilds = True
 intents.members = True
 
-bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None, case_insensitive=True)
 
 @bot.event
 async def on_ready():
@@ -56,7 +56,7 @@ def challenge_formatter(index, challenge_data):
     return f'{index + 1}. **{challenge_name}** for `{points} points`\n'
 
 
-@bot.command(name='add_challenge', help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
+@bot.command(name='add_challenge', aliases=['newChallenge'], help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
 async def add_challenge(ctx, *, challenges_and_points: str):
     try:
         challenges_and_points = challenges_and_points.rsplit(' ', 1)
@@ -90,7 +90,7 @@ async def add_challenge(ctx, *, challenges_and_points: str):
     paginator = AddChallengePaginator(ctx, added_challenges, "Added challenges", formatter)
     await paginator.start()
 
-@bot.command(name='delete_challenge', help='Deletes a challenge: !delete_challenge "challenge1"')
+@bot.command(name='delete_challenge', aliases=['removeChallenge', 'discardChallenge'], help='Deletes a challenge: !delete_challenge "challenge1"')
 async def delete_challenge(ctx, *, challenge: str):
     challenge = challenge.strip('"')  # Strip the quotes from the challenge string
     conn = sqlite3.connect('challenges.db')
@@ -106,7 +106,7 @@ async def delete_challenge(ctx, *, challenge: str):
     conn.commit()
     conn.close()
 
-@bot.command(name='search', help='Search for challenges: !search keyword')
+@bot.command(name='search', aliases=['findChallenge'], help='Search for challenges: !search keyword')
 async def search(ctx, *, keyword: str):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -121,20 +121,20 @@ async def search(ctx, *, keyword: str):
     # Now get the full data for those top matches
     results = []
     for match, score in matches:
-        if score >= 70:  # Set a minimum score
+        if score >= 50:  # Set a minimum score
             c.execute("SELECT challenge_name, points FROM challenges WHERE challenge_name = ?", (match,))
             results.append(c.fetchone())
 
     conn.close()
 
     if results:
-        paginator = ChallengePaginator(ctx, results, f'Search results for "{keyword}"', challenge_formatter)
+        paginator = ChallengePaginator(ctx, results, f'Challenge search results for "{keyword}"', challenge_formatter)
         await paginator.start()
     else:
         await ctx.send(f'No challenges found similar to "{keyword}"')
 
 
-@bot.command(name='all_challenges', help='Lists all challenges.')
+@bot.command(name='all_challenges', aliases=['showAllChallenges'], help='Lists all challenges.')
 async def all_challenges(ctx):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -173,7 +173,7 @@ def get_color(completed_points):
     else: # less than 25% completed
         return discord.Color.red()
 
-@bot.command(name='user_stats', help='Get a user\'s stats: !user_stats [user]')
+@bot.command(name='user_stats', aliases=['getUserStats'], help='Get a user\'s stats: !user_stats [user]')
 async def user_stats(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
@@ -246,7 +246,7 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
 
     await ctx.send(embed=embed)
 
-@bot.command(name='random_challenge', help='Get a random challenge for a user: !random_challenge user')
+@bot.command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
 async def random_challenge(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
@@ -284,7 +284,7 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
         await ctx.send(f'{user.name} has completed all challenges.')
     conn.close()
 
-@bot.command(name='complete', help='Mark a challenge as completed for a user: !complete challenge name')
+@bot.command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
 async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
     global total_points  # Declare a global variable to store the total points
     if user is None:
@@ -359,7 +359,7 @@ async def complete(ctx, user: typing.Optional[discord.User], *, challenge: str):
         # Send a different message if the user has already completed the challenge
         await ctx.send(f'{user.name} has already completed the "{challenge}" challenge.')
 
-@bot.command(name='leaderboard', help='Show the leaderboard: !leaderboard')
+@bot.command(name='leaderboard', aliases=['showRankings'], help='Show the leaderboard: !leaderboard')
 async def leaderboard(ctx):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -495,7 +495,7 @@ class ChallengePaginator:
 
         return embed
 
-@bot.command(name='progress', help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
+@bot.command(name='progress', aliases=['checkProgress'], help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
 async def progress(ctx, *users: discord.User):
     if not users:
         # If no users are given, use the author of the message
@@ -587,7 +587,7 @@ async def progress(ctx, *users: discord.User):
 
     await ctx.send(embed=embed)
 
-@bot.command(name='remaining', help='Show the remaining challenges for a user: !remaining [user]')
+@bot.command(name='remaining', aliases=['pendingChallenges'], help='Show the remaining challenges for a user: !remaining [user]')
 async def remaining(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
