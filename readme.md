@@ -24,7 +24,7 @@ The bot provides the following commands:
 
 9. `!search [keyword]`: Search for challenges.
 
-10. `!delete_challenge [challenge]`: Delete a challenge. Make sure to use quotes around the challenge name. Example: `!delete_challenge "challenge name"`.
+10. `!delete_challenge [challenge]`: Delete a challenge. Example: `!delete_challenge [challenge name]`.
 
 11. `!help`: Display the list of commands.
 
@@ -41,7 +41,7 @@ pip install discord.py
 pip install python-dotenv
 pip install fuzzywuzzy
 pip install python-Levenshtein
-pip install discord-py-slash-command
+pip install discord-py-slash-command      #not really needed, mainly used for testing purposes. If any errors occur without this, be sure to install it.
 ```
 
 3. Create a new bot on the [Discord developer portal](https://discord.com/developers/applications) and get your bot token.
@@ -62,6 +62,18 @@ To use the bot commands, type the command name preceded by an exclamation mark i
 
 ```
 !add_challenge "Challenge Name" 50
+
+!user_stats @user
+
+!complete Challenge Name
+
+!progress @user1 @user2
+
+!remaining @user
+
+!search Run
+
+!delete_challenge Challenge 1
 ```
 
 ## Contributing
