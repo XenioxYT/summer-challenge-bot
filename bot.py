@@ -37,19 +37,48 @@ async def on_ready():
 @bot.command(name='help', help='Display a list of all commands and what they do.')
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
-    help_embed.add_field(name="!add_challenge / !newChallenge [challenge] [points]", value="Adds a challenge if it doesn't already exist. Example: !add_challenge \"challenge name\" 10. You can add multiple challenges at once by separating them with commas. Example: !add_challenge \"challenge1\", \"challenge2\", \"challenge3\" 10")
-    help_embed.add_field(name="!all_challenges / !showAllChallenges", value="Lists all challenges.")
-    help_embed.add_field(name="!user_stats / !getUserStats [user]", value="Get a user's stats.")
-    help_embed.add_field(name="!random_challenge / !surpriseMe [user]", value="Get a random challenge for a user.")
-    help_embed.add_field(name="!complete / !finishChallenge [challenge]", value="Mark a challenge as completed for a user.")
-    help_embed.add_field(name="!leaderboard / !showRankings", value="Show the leaderboard.")
-    help_embed.add_field(name="!progress / !checkProgress [user1] [user2] ...", value="Show the progress of a user or a group of users.")
-    help_embed.add_field(name="!remaining / !pendingChallenges [user]", value="Show the remaining challenges for a user.")
-    help_embed.add_field(name="!search / !findChallenge [keyword]", value="Search for challenges.")
-    help_embed.add_field(name="!delete_challenge / !removeChallenge / !discardChallenge [challenge]", value="Delete a challenge. Example: !delete_challenge [challenge name].")
-    help_embed.add_field(name="!help", value="Display this message.")
+    
+    help_embed.description = """
+**!add_challenge / !newChallenge [challenge] [points]**
+_Adds a challenge if it doesn't already exist._
+Example: `!add_challenge "challenge name" 10`
+You can add multiple challenges at once by separating them with commas. 
+Example: `!add_challenge "challenge1", "challenge2", "challenge3" 10`
 
+**!all_challenges / !showAllChallenges**
+_Lists all challenges._
+
+**!user_stats / !getUserStats [user]**
+_Get a user's stats._
+
+**!random_challenge / !surpriseMe [user]**
+_Get a random challenge for a user._
+
+**!complete / !finishChallenge [challenge]**
+_Mark a challenge as completed for a user._
+
+**!leaderboard / !showRankings**
+_Show the leaderboard._
+
+**!progress / !checkProgress [user1] [user2] ...**
+_Show the progress of a user or a group of users._
+
+**!remaining / !pendingChallenges [user]**
+_Show the remaining challenges for a user._
+
+**!search / !findChallenge [keyword]**
+_Search for challenges._
+
+**!delete_challenge / !removeChallenge / !discardChallenge [challenge]**
+_Delete a challenge._
+Example: `!delete_challenge [challenge name]`
+
+**!help**
+_Display this message._
+    """
+    
     await ctx.send(embed=help_embed)
+
 
 
 def challenge_formatter(index, challenge_data):
