@@ -1,21 +1,15 @@
 import discord
-import sqlite3
-import random
-import os 
-import math
-import asyncio
-import typing
-from dotenv import load_dotenv
+from discord import commands
 from discord.ext import commands
-from discord import Embed
+from discord import bot
+from discord import ui
+import os
+import random
+import sqlite3
+import typing
 from fuzzywuzzy import process
-
-# here's the list of pip packages you'll need to install
-# pip install discord.py
-# pip install python-dotenv
-# pip install fuzzywuzzy
-# pip install python-Levenshtein
-# pip install discord-py-slash-command
+from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -27,14 +21,14 @@ intents.messages = True
 intents.guilds = True
 intents.members = True
 
-bot = commands.Bot(command_prefix='!', intents=intents, help_command=None, case_insensitive=True)
+bot = commands.Bot(application_command_prefix='!', intents=intents, help_command=None, case_insensitive=True)
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
     bot.intents.members = True
 
-@bot.command(name='help', help='Display a list of all commands and what they do.')
+@bot.application_command(name='help', help='Display a list of all commands and what they do.')
 async def help(ctx):
     help_embed = discord.Embed(title="Bot Commands", color=discord.Color.blue())
     
@@ -45,10 +39,10 @@ Example: `!add_challenge "challenge name" 10`
 You can add multiple challenges at once by separating them with commas. 
 Example: `!add_challenge "challenge1", "challenge2", "challenge3" 10`
 
-**!all_challenges / !showAllChallenges**
+**/all_challenges**
 _Lists all challenges._
 
-**!user_stats / !getUserStats [user]**
+**/user_stats**
 _Get a user's stats._
 
 **!random_challenge / !surpriseMe [user]**
@@ -77,7 +71,7 @@ Example: `!delete_challenge [challenge name]`
 _Display this message._
     """
     
-    await ctx.send(embed=help_embed)
+    await ctx.response.send_message(embed=help_embed)
 
 
 
@@ -86,15 +80,12 @@ def challenge_formatter(index, challenge_data):
     return f'{index + 1}. **{challenge_name}** for `{points} points`\n'
 
 
-@bot.command(name='add_challenge', aliases=['newChallenge'], help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
-async def add_challenge(ctx, *, challenges_and_points: str):
+@bot.application_command(name='add_challenge', aliases=['newChallenge'], help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
+async def add_challenge(ctx, challenges: str, points: int): # use separate arguments for challenges and points
     try:
-        challenges_and_points = challenges_and_points.rsplit(' ', 1)
-        points = int(challenges_and_points[-1])
-        challenges_str = challenges_and_points[0]
-        challenges = [s.strip().strip('"') for s in challenges_str.split(',')]  # Strip the quotes from the challenge strings
+        challenges = [s.strip().strip('"') for s in challenges.split(',')]  # Strip the quotes from the challenge strings
     except ValueError:
-        await ctx.send('Invalid input format. Please follow the format: "challenge1", "challenge2", "challenge3" points')
+        await ctx.response.send_message('Invalid input format. Please follow the format: "challenge1", "challenge2", "challenge3" points') # use response.send_message instead of send
         return
 
     conn = sqlite3.connect('challenges.db')
@@ -120,7 +111,10 @@ async def add_challenge(ctx, *, challenges_and_points: str):
     paginator = AddChallengePaginator(ctx, added_challenges, "Added challenges", formatter)
     await paginator.start()
 
-@bot.command(name='delete_challenge', aliases=['removeChallenge', 'discardChallenge'], help='Deletes a challenge: !delete_challenge "challenge1"')
+
+
+@bot.application_command(name='delete_challenge', aliases=['removeChallenge', 'discardChallenge'], help='Deletes a challenge: !delete_challenge "challenge1"')
+@discord.commands.default_permissions(manage_messages=True) # only members with manage messages permission can use this command
 async def delete_challenge(ctx, *, challenge: str):
     challenge = challenge.strip('"')  # Strip the quotes from the challenge string
     conn = sqlite3.connect('challenges.db')
@@ -128,15 +122,16 @@ async def delete_challenge(ctx, *, challenge: str):
     
     c.execute("SELECT * FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
     if c.fetchone() is None:
-        await ctx.send(f'The challenge "{challenge}" does not exist.')
+        await ctx.response.send_message(f'The challenge "{challenge}" does not exist.') # use response.send_message instead of send
     else:
         c.execute("DELETE FROM challenges WHERE LOWER(challenge_name) = ?", (challenge.lower(),))
-        await ctx.send(f'The challenge "{challenge}" has been deleted.')
+        await ctx.response.send_message(f'The challenge "{challenge}" has been deleted.') # use response.send_message instead of send
         
     conn.commit()
     conn.close()
 
-@bot.command(name='search', aliases=['findChallenge'], help='Search for challenges: !search keyword')
+
+@bot.application_command(name='search', aliases=['findChallenge'], help='Search for challenges: !search keyword')
 async def search(ctx, *, keyword: str):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -161,10 +156,11 @@ async def search(ctx, *, keyword: str):
         paginator = ChallengePaginator(ctx, results, f'Challenge search results for "{keyword}"', challenge_formatter)
         await paginator.start()
     else:
-        await ctx.send(f'No challenges found similar to "{keyword}"')
+        await ctx.response.send_message(f'No challenges found similar to "{keyword}"') # use response.send_message instead of send
 
 
-@bot.command(name='all_challenges', aliases=['showAllChallenges'], help='Lists all challenges.')
+
+@bot.application_command(name='all_challenges', aliases=['showAllChallenges'], help='Lists all challenges.')
 async def all_challenges(ctx):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -203,7 +199,7 @@ def get_color(completed_points):
     else: # less than 25% completed
         return discord.Color.red()
 
-@bot.command(name='user_stats', aliases=['getUserStats'], help='Get a user\'s stats: !user_stats [user]')
+@bot.application_command(name='user_stats', aliases=['getUserStats'], help='Get a user\'s stats: !user_stats [user]')
 async def user_stats(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
@@ -274,9 +270,10 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
         embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(name="__Challenge List__", value="No completed challenges 🙁", inline=False)
 
-    await ctx.send(embed=embed)
+    await ctx.response.send_message(embed=embed) # use response.send_message instead of send
 
-@bot.command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
+
+@bot.application_command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
 async def random_challenge(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
@@ -309,17 +306,17 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
         embed.add_field(name="__Points__", value=f"`{points}`", inline=False)
         embed.add_field(name="__Remaining Challenges__", value=f"`{remaining_challenges}`", inline=False)
 
-        await ctx.send(embed=embed)
+        await ctx.response.send_message(embed=embed) # use response.send_message instead of send
     else:
-        await ctx.send(f'{user.name} has completed all challenges.')
+        await ctx.response.send_message(f'{user.name} has completed all challenges.') # use response.send_message instead of send
     conn.close()
 
-@bot.command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge1, challenge2, challenge3')
+@bot.application_command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge1, challenge2, challenge3')
 async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenges: str = None):
     if user is None:
         user = ctx.author
     if challenges is None:
-        await ctx.send('No challenges provided.')
+        await ctx.response.send_message('No challenges provided.') # use response.send_message instead of send
         return
     challenge_names = [challenge.strip().lower() for challenge in challenges.split(',')]  # Split challenges by comma and strip whitespace
 
@@ -355,7 +352,7 @@ async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenge
     await paginator.start()
 
 
-@bot.command(name='leaderboard', aliases=['showRankings'], help='Show the leaderboard: !leaderboard')
+@bot.application_command(name='leaderboard', aliases=['showRankings'], help='Show the leaderboard: !leaderboard')
 async def leaderboard(ctx):
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
@@ -390,42 +387,37 @@ async def leaderboard(ctx):
 
     if len(results) == 0:
         leaderboard_embed.description = 'The leaderboard is empty.'
-    await ctx.send(embed=leaderboard_embed)
+    await ctx.response.send_message(embed=leaderboard_embed) # use response.send_message instead of send
 
-class AddChallengePaginator:
+class AddChallengePaginator(ui.View): # subclass ui.View
 
     def __init__(self, ctx, data, title, formatter):
+        super().__init__() # call the super constructor
         self.ctx = ctx
         self.data = data
         self.current_page = 0
         self.title = title
         self.formatter = formatter
 
+    @discord.ui.button(label="◀️ Previous Page", style=discord.ButtonStyle.primary) # create a button with label "Previous" and style primary
+    async def previous(self, button, interaction): # define a callback function for the button
+        if self.current_page > 0: # check if there is a previous page
+            self.current_page -= 1 # decrement the current page index
+            await interaction.response.edit_message(embed=self.make_embed()) # edit the message with the previous page
+
+    @discord.ui.button(label="Next Page ▶️", style=discord.ButtonStyle.primary) # create another button with label "Next" and style primary
+    async def next(self, button, interaction): # define another callback function for the button
+        if self.current_page < (len(self.data) - 1) // 10: # check if there is a next page
+            self.current_page += 1 # increment the current page index
+            await interaction.response.edit_message(embed=self.make_embed()) # edit the message with the next page
+
     async def start(self):
         if not self.data:
-            await self.ctx.send('No data to display.')
+            await self.ctx.response.send_message('No data to display.')
             return
 
-        self.message = await self.ctx.send(embed=self.make_embed())
-        await self.message.add_reaction('◀️')
-        await self.message.add_reaction('▶️')
-
-        def check(reaction, user):
-            return user == self.ctx.author and str(reaction.emoji) in ['◀️', '▶️'] and reaction.message.id == self.message.id
-
-        while True:
-            try:
-                reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
-            except asyncio.TimeoutError:
-                break
-            else:
-                await self.message.remove_reaction(reaction, user)
-                if str(reaction.emoji) == '▶️' and self.current_page < (len(self.data) - 1) // 10:
-                    self.current_page += 1
-                elif str(reaction.emoji) == '◀️' and self.current_page > 0:
-                    self.current_page -= 1
-
-                await self.message.edit(embed=self.make_embed())
+        self.message = await self.ctx.response.send_message(embed=self.make_embed(), view=self) # send a message with the embed and the view
+        # remove the reaction code
 
     def make_embed(self):
         embed = discord.Embed(
@@ -441,40 +433,37 @@ class AddChallengePaginator:
 
         return embed
 
-class ChallengePaginator:
+
+
+class ChallengePaginator(ui.View): # subclass ui.View
 
     def __init__(self, ctx, challenges, title, formatter):
+        super().__init__() # call the super constructor
         self.ctx = ctx
         self.challenges = challenges
         self.current_page = 0
         self.title = title
         self.formatter = formatter
 
+    @discord.ui.button(label="◀️ Previous Page", style=discord.ButtonStyle.primary) # create a button with label "Previous" and style primary
+    async def previous(self, button, interaction): # define a callback function for the button
+        if self.current_page > 0: # check if there is a previous page
+            self.current_page -= 1 # decrement the current page index
+            await interaction.response.edit_message(embed=self.make_embed()) # edit the message with the previous page
+
+    @discord.ui.button(label="Next Page ▶️", style=discord.ButtonStyle.primary) # create another button with label "Next" and style primary
+    async def next(self, button, interaction): # define another callback function for the button
+        if self.current_page < (len(self.challenges) - 1) // 10: # check if there is a next page
+            self.current_page += 1 # increment the current page index
+            await interaction.response.edit_message(embed=self.make_embed()) # edit the message with the next page
+
     async def start(self):
         if not self.challenges:
-            await self.ctx.send('No challenges exist yet.')
+            await self.ctx.response.send_message('No challenges exist yet.')
             return
 
-        self.message = await self.ctx.send(embed=self.make_embed())
-        await self.message.add_reaction('◀️')
-        await self.message.add_reaction('▶️')
-
-        def check(reaction, user):
-            return user == self.ctx.author and str(reaction.emoji) in ['◀️', '▶️'] and reaction.message.id == self.message.id
-
-        while True:
-            try:
-                reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
-            except asyncio.TimeoutError:
-                break
-            else:
-                await self.message.remove_reaction(reaction, user)
-                if str(reaction.emoji) == '▶️' and self.current_page < (len(self.challenges) - 1) // 10:
-                    self.current_page += 1
-                elif str(reaction.emoji) == '◀️' and self.current_page > 0:
-                    self.current_page -= 1
-
-                await self.message.edit(embed=self.make_embed())
+        self.message = await self.ctx.response.send_message(embed=self.make_embed(), view=self) # send a message with the embed and the view
+        # remove the reaction code
 
     def make_embed(self):
         embed = discord.Embed(
@@ -491,11 +480,12 @@ class ChallengePaginator:
 
         return embed
 
+
 class CompleteChallengePaginator(AddChallengePaginator):
     def __init__(self, ctx, data, title, formatter):
         super().__init__(ctx, data, title, formatter)
 
-@bot.command(name='progress', aliases=['checkProgress'], help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
+@bot.application_command(name='progress', aliases=['checkProgress'], help='Show the progress of a user or a group of users: !progress [user1] [user2] ...')
 async def progress(ctx, *users: discord.User):
     if not users:
         # If no users are given, use the author of the message
@@ -585,9 +575,9 @@ async def progress(ctx, *users: discord.User):
             winner_value = f"{point_symbol} {winner_data['points']} {point_abbrev}\n{challenge_symbol} {winner_data['challenges']}/{total_challenges} {challenge_abbrev}"
             embed.add_field(name="Winner", value=f"{winner_data['user']}\n{winner_value}", inline=False)
 
-    await ctx.send(embed=embed)
+    await ctx.response.send_message(embed=embed)
 
-@bot.command(name='remaining', aliases=['pendingChallenges'], help='Show the remaining challenges for a user: !remaining [user]')
+@bot.application_command(name='remaining', aliases=['pendingChallenges'], help='Show the remaining challenges for a user: !remaining [user]')
 async def remaining(ctx, user: discord.User = None): # type: ignore
     if user is None:
         user = ctx.author
@@ -613,3 +603,4 @@ async def remaining(ctx, user: discord.User = None): # type: ignore
     await paginator.start()
 
 bot.run(TOKEN) # type: ignore
+
