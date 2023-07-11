@@ -83,7 +83,7 @@ def challenge_formatter(index, challenge_data):
 @bot.application_command(name='add_challenge', aliases=['newChallenge'], help='Adds challenges: !add_challenge "challenge1", "challenge2", "challenge3" points')
 async def add_challenge(ctx, challenges: str, points: int): # use separate arguments for challenges and points
     try:
-        challenges = [s.strip().strip('"') for s in challenges.split(',')]  # Strip the quotes from the challenge strings
+        challenges = [s.strip().strip('"') for s in challenges.split(',')]  # type: ignore # Strip the quotes from the challenge strings
     except ValueError:
         await ctx.response.send_message('Invalid input format. Please follow the format: "challenge1", "challenge2", "challenge3" points') # use response.send_message instead of send
         return
@@ -145,7 +145,7 @@ async def search(ctx, *, keyword: str):
 
     # Now get the full data for those top matches
     results = []
-    for match, score in matches:
+    for match, score in matches: # type: ignore
         if score >= 50:  # Set a minimum score
             c.execute("SELECT challenge_name, points FROM challenges WHERE challenge_name = ?", (match,))
             results.append(c.fetchone())
@@ -237,7 +237,8 @@ async def user_stats(ctx, user: discord.User = None, detail: bool = False): # ty
     # Create embed
     color=get_color(completed_points) # use completed points instead of completed challenges
     embed = discord.Embed(title=f"{user.name}'s Stats", color=discord.Color.blue())
-    embed.set_thumbnail(url=user.avatar.url)
+    if user.avatar:
+        embed.set_thumbnail(url=user.avatar.url)
     embed.add_field(name="__Total Points__", value=f"{total_points or 0} 🏆", inline=True)
     embed.add_field(name="__Completed Challenges__", value=f"{len(completed_challenges) or 0} 🏁", inline=True)
     embed.color = color
@@ -346,7 +347,7 @@ async def random_challenge(ctx, user: discord.User = None): # type: ignore
     conn.close()
 
 @bot.application_command(name='complete', aliases=['finishChallenge'], help='Mark a challenge as completed for a user: !complete challenge1, challenge2, challenge3')
-async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenges: str = None):
+async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenges: str = None): # type: ignore
     if user is None:
         user = ctx.author
     if challenges is None:
@@ -365,13 +366,13 @@ async def complete(ctx, user: typing.Optional[discord.User] = None, *, challenge
             completed_challenges.append((challenge, 'not found'))
             continue
         challenge_id, points = result
-        c.execute("INSERT OR IGNORE INTO user_progress (user_id, challenge_id, is_completed) VALUES (?, ?, ?)", (user.id, challenge_id, False))
-        c.execute("SELECT is_completed FROM user_progress WHERE user_id = ? AND challenge_id = ?", (user.id, challenge_id))
+        c.execute("INSERT OR IGNORE INTO user_progress (user_id, challenge_id, is_completed) VALUES (?, ?, ?)", (user.id, challenge_id, False)) # type: ignore
+        c.execute("SELECT is_completed FROM user_progress WHERE user_id = ? AND challenge_id = ?", (user.id, challenge_id)) # type: ignore
         is_completed = c.fetchone()[0]
         if is_completed:
             completed_challenges.append((challenge, 'already completed'))
             continue
-        c.execute("UPDATE user_progress SET is_completed = ? WHERE user_id = ? AND challenge_id = ?", (True, user.id, challenge_id))
+        c.execute("UPDATE user_progress SET is_completed = ? WHERE user_id = ? AND challenge_id = ?", (True, user.id, challenge_id)) # type: ignore
         completed_challenges.append((challenge, 'completed'))
 
     conn.commit()
