@@ -199,13 +199,12 @@ def get_color(completed_points):
     else: # less than 25% completed
         return discord.Color.red()
 
-@bot.application_command(name='user_stats', aliases=['getUserStats'], help='Get a user\'s stats: !user_stats [user]')
-async def user_stats(ctx, user: discord.User = None): # type: ignore
+@bot.application_command(name='user_stats', aliases=['getUserStats'], help='Get a user\'s stats: !user_stats [user] [detail]')
+async def user_stats(ctx, user: discord.User = None, detail: bool = False): # type: ignore
     if user is None:
         user = ctx.author
     conn = sqlite3.connect('challenges.db')
     c = conn.cursor()
-
     # Get total points
     c.execute("""
         SELECT SUM(challenges.points)
@@ -244,33 +243,68 @@ async def user_stats(ctx, user: discord.User = None): # type: ignore
     embed.color = color
 
     if completed_challenges:
-        # Get the last challenge in the list as the most recent challenge completed
         recent_challenge_name, recent_challenge_points = completed_challenges[-1]
 
-        # Sort the completed challenges by points in descending order
         sorted_challenges = sorted(completed_challenges, key=lambda x: x[1], reverse=True)
-
-        # Create a list of formatted challenge names and points
         challenges_list = [f"{name} ({points} points)" for name, points in sorted_challenges]
-
-        # Split the challenge list into multiple fields, each with less than 1024 characters
-        field_value = ""
-        for challenge in challenges_list:
-            if len(field_value) + len(challenge) + 1 > 1024: # check if adding the next challenge would exceed the limit
-                embed.add_field(name="__Challenge List__", value=f"{field_value}", inline=False) # add the current field value to the embed
-                field_value = "" # reset the field value
-            field_value += challenge + "\n" # add the next challenge to the field value
         
-        if field_value: # check if there is any remaining field value
-            embed.add_field(name="__Challenge List__", value=f"{field_value}", inline=False) # add the last field value to the embed
+        if detail: # check if the user wants to see the detailed stats
+            paginator = Paginator(challenges_list) # create a paginator object with the challenges list
+            page_number = 1 # start from the first page
+            page_content = paginator.get_page(page_number) # get the content of the first page
 
-        # Add a field for the most recent challenge completed
-        embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points) 🎉", inline=False)
+            field_value = "\n".join(page_content) # join the content with newlines
+            embed.add_field(name=f"__Challenge List (Page {page_number} of {paginator.get_max_pages()})__", value=f"{field_value}", inline=False) # add the field value to the embed
+
+            # Add a field for the most recent challenge completed
+            embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points) 🎉", inline=False)
+
+            message = await ctx.response.send_message(embed=embed) # send the message with the embed
+
+            await message.add_reaction("⬅️") # add a reaction for going back a page
+            await message.add_reaction("➡️") # add a reaction for going forward a page
+
+            def check(reaction, user): # define a check function for the reaction event
+                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"] # check if the reaction is from the author and on the same message and is one of the valid emojis
+            
+            while True: # loop until break
+                try:
+                    reaction, user = await bot.wait_for("reaction_add", timeout=60.0, check=check) # wait for a reaction that passes the check within 60 seconds
+                except asyncio.TimeoutError: # if no reaction is added within 60 seconds
+                    await message.clear_reactions() # clear all reactions from the message
+                    break # break the loop
+                else: # if a valid reaction is added
+                    if str(reaction.emoji) == "⬅️": # if the reaction is for going back a page
+                        page_number -= 1 # decrement the page number by 1
+                        if page_number < 1: # if the page number is less than 1
+                            page_number = paginator.get_max_pages() # wrap around to the last page
+                        
+                        page_content = paginator.get_page(page_number) # get the content of the new page
+                        field_value = "\n".join(page_content) # join the content with newlines
+                        embed.set_field_at(2, name=f"__Challenge List (Page {page_number} of {paginator.get_max_pages()})__", value=f"{field_value}") # update the field value in the embed
+                        await message.edit(embed=embed) # edit the message with the new embed
+                        await message.remove_reaction(reaction, user) # remove the reaction from the message
+                    elif str(reaction.emoji) == "➡️": # if the reaction is for going forward a page
+                        page_number += 1 # increment the page number by 1
+                        if page_number > paginator.get_max_pages(): # if the page number is greater than the max pages
+                            page_number = 1 # wrap around to the first page
+                        
+                        page_content = paginator.get_page(page_number) # get the content of the new page
+                        field_value = "\n".join(page_content) # join the content with newlines
+                        embed.set_field_at(2, name=f"__Challenge List (Page {page_number} of {paginator.get_max_pages()})__", value=f"{field_value}") # update the field value in the embed
+                        await message.edit(embed=embed) # edit the message with the new embed
+                        await message.remove_reaction(reaction, user) # remove the reaction from the message
+
+        else: # if the user does not want to see the detailed stats
+            # Add a field for the most recent challenge completed
+            embed.add_field(name="__Most Recent Challenge Completed__", value=f"{recent_challenge_name} ({recent_challenge_points} points) 🎉", inline=False)
+            await ctx.response.send_message(embed=embed) # send the message with the embed
+
     else:
         embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(name="__Challenge List__", value="No completed challenges 🙁", inline=False)
+        await ctx.response.send_message(embed=embed)
 
-    await ctx.response.send_message(embed=embed) # use response.send_message instead of send
 
 
 @bot.application_command(name='random_challenge', aliases=['surpriseMe'], help='Get a random challenge for a user: !random_challenge user')
@@ -479,6 +513,23 @@ class ChallengePaginator(ui.View): # subclass ui.View
         embed.set_footer(text=f"Page {self.current_page + 1} of {total_pages}")
 
         return embed
+    
+class Paginator:
+    def __init__(self, items, page_size=10):
+        self.items = items # the list of items to paginate
+        self.page_size = page_size # the number of items per page
+        self.max_pages = (len(items) - 1) // page_size + 1 # the total number of pages
+    
+    def get_page(self, page_number):
+        # return a sublist of items for the given page number
+        start_index = (page_number - 1) * self.page_size # the start index of the sublist
+        end_index = start_index + self.page_size # the end index of the sublist
+        return self.items[start_index:end_index] # return the sublist
+    
+    def get_max_pages(self):
+        # return the maximum number of pages
+        return self.max_pages
+
 
 
 class CompleteChallengePaginator(AddChallengePaginator):
