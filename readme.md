@@ -18,15 +18,13 @@ The bot provides the following commands:
 
 6. `!leaderboard`: Displays the leaderboard of all users.
 
-7. `!progress [user1] [user2] ...`: Shows the progress of a user or a group of users.
+7. `!remaining [user]`: Shows the remaining challenges for a user.
 
-8. `!remaining [user]`: Shows the remaining challenges for a user.
+8. `!search [keyword]`: Search for challenges.
 
-9. `!search [keyword]`: Search for challenges.
+9. `!delete_challenge [challenge]`: Delete a challenge. Example: `!delete_challenge [challenge name]`.
 
-10. `!delete_challenge [challenge]`: Delete a challenge. Example: `!delete_challenge [challenge name]`.
-
-11. `!help`: Display the list of commands.
+10. `!help`: Display the list of commands.
 
 ## Installation
 
